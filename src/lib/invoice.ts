@@ -1,5 +1,11 @@
-import type { AppSettings, SalesOrder } from "@/types";
+import type { AppSettings, OrderLine, SalesOrder, Salon } from "@/types";
 import { lineGst, lineNet } from "./calc";
+import { LOGO_BASE64 } from "./logoBase64";
+
+const lineSaving = (l: OrderLine) => {
+  const mrp = l.originalPrice ?? 0;
+  return mrp > l.price ? (mrp - l.price) * l.qty : 0;
+};
 
 // ---- Indian rupee → words (for "Total amount in words") ------------------
 const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
@@ -36,82 +42,142 @@ const money = (n: number) =>
   "₹ " + Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // ---- Standalone invoice HTML (matches the PureCuts layout) ---------------
-export function buildInvoiceHtml(order: SalesOrder, s: AppSettings): string {
+export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salon): string {
   const inv = `${s.invoicePrefix}${order.orderNo}`;
   const date = new Date(order.createdAt).toLocaleDateString("en-GB");
+  const dueDate = new Date(order.expectedDelivery ?? order.createdAt + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB");
   const hasGst = order.gstTotal > 0;
+  const totalSaving = order.lines.reduce((sum, line) => sum + Math.max(0, lineSaving(line)), 0);
 
   const rows = order.lines
     .map(
-      (l) => `
+      (l) => {
+        const saving = Math.max(0, lineSaving(l));
+        return `
       <tr>
         <td class="desc">${esc(l.name)}${l.description ? `<div style="color:#9ca3af;font-size:11px">${esc(l.description)}</div>` : ""}</td>
         <td class="hsn"></td>
         <td class="num">${l.qty.toFixed(2)}</td>
         <td class="num">${l.price.toFixed(2)}</td>
-        <td class="num tax">${hasGst ? money(lineGst(l)) : ""}</td>
+        <td class="num">${l.originalPrice ? money(l.originalPrice) : "-"}</td>
+        <td class="num">${l.originalPrice ? money(saving) : "-"}</td>
         <td class="num amt">${money(lineNet(l))}</td>
-      </tr>`
+      </tr>`;
+      }
     )
     .join("");
 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Invoice ${esc(inv)}</title>
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: Helvetica, Arial, sans-serif; color: #1f2937; margin: 0; padding: 40px; font-size: 13px; }
-  .head { display: flex; justify-content: flex-end; }
-  .company { text-align: right; line-height: 1.5; }
-  .company .name { font-weight: 700; }
-  .title { text-align: right; font-size: 28px; color: #5b4b8a; font-weight: 600; margin: 28px 0 36px;
-           border-top: 1px solid #5b4b8a; padding-top: 8px; }
-  .billto { line-height: 1.6; margin-bottom: 28px; }
-  .meta { display: flex; gap: 64px; margin-bottom: 28px; }
-  .meta .lbl { color: #5b6b8a; font-size: 12px; }
-  table { width: 100%; border-collapse: collapse; }
-  thead th { text-align: left; color: #374151; font-weight: 600; border-bottom: 1px solid #d1d5db;
-             padding: 8px 6px; font-size: 12px; }
-  tbody td { padding: 10px 6px; border-bottom: 1px solid #eef0f3; }
-  tbody tr:nth-child(even) { background: #fafafa; }
-  .num { text-align: right; }
-  .amt { font-weight: 500; }
-  th.num { text-align: right; }
-  .totals { display: flex; justify-content: space-between; margin-top: 28px; }
-  .pc { color: #4b5563; }
-  .totbox { width: 320px; }
-  .totbox .row { display: flex; justify-content: space-between; padding: 6px 0; }
-  .totbox .grand { color: #5b4b8a; font-weight: 600; }
-  .words { text-align: right; margin-top: 4px; color: #6b7280; font-size: 12px; }
-  .words .cap { color: #374151; }
-  .foot { margin-top: 80px; display: flex; justify-content: space-between; color: #6b7280;
-          border-top: 1px solid #e5e7eb; padding-top: 10px; font-size: 12px; }
-  @media print { body { padding: 24px; } button { display: none; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Trebuchet MS, Helvetica, Arial, sans-serif; color: #1f2937; padding: 40px; font-size: 13px; line-height: 1.5; }
+  
+  /* Header with logo and company info */
+  .header { display: flex; gap: 20px; margin-bottom: 30px; align-items: flex-start; border-bottom: 2px solid #5b4b8a; padding-bottom: 20px; }
+  .logo img { height: 70px; width: auto; }
+  .company-info { flex: 1; }
+  .company-info .name { font-size: 24px; font-weight: 700; color: #5b4b8a; margin-bottom: 5px; }
+  .company-info .details { font-size: 12px; color: #6b7280; line-height: 1.6; }
+  .company-info .details div { margin-bottom: 3px; }
+  
+  .invoice-title { text-align: right; }
+  .invoice-no { font-size: 28px; font-weight: 700; color: #5b4b8a; }
+  .invoice-date { font-size: 12px; color: #6b7280; margin-top: 5px; }
+  
+  /* Bill To section */
+  .billing-section { display: flex; gap: 40px; margin-bottom: 30px; }
+  .bill-to, .bill-from { flex: 1; }
+  .bill-to h3, .bill-from h3 { font-size: 11px; font-weight: 700; color: #5b4b8a; text-transform: uppercase; margin-bottom: 8px; }
+  .bill-to .details, .bill-from .details { font-size: 12px; color: #374151; line-height: 1.8; }
+  
+  /* Meta info */
+  .meta-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; padding: 15px; background: #f3f4f6; border-radius: 6px; }
+  .meta-item { }
+  .meta-label { font-size: 11px; font-weight: 600; color: #5b6b8a; text-transform: uppercase; margin-bottom: 4px; }
+  .meta-value { font-size: 13px; font-weight: 600; color: #1f2937; }
+  
+  /* Items table */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  thead { background: #5b4b8a; color: white; }
+  thead th { text-align: left; padding: 12px 8px; font-size: 12px; font-weight: 600; border: none; }
+  tbody td { padding: 12px 8px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+  tbody tr:nth-child(even) { background: #f9fafb; }
+  tbody tr:hover { background: #f3f4f6; }
+  .num { text-align: right; font-family: 'Courier New', monospace; }
+  .desc { color: #1f2937; }
+  .desc .sub { color: #9ca3af; font-size: 11px; }
+  
+  /* Totals section */
+  .totals-section { display: flex; justify-content: flex-end; gap: 40px; margin-top: 30px; }
+  .totals-summary { width: 350px; }
+  .total-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+  .total-row.grand { border-top: 2px solid #5b4b8a; border-bottom: 2px solid #5b4b8a; padding: 12px 0; font-weight: 700; font-size: 14px; color: #5b4b8a; margin: 10px 0; }
+  .total-label { color: #4b5563; }
+  .total-value { text-align: right; font-weight: 600; font-family: 'Courier New', monospace; }
+  .savings-banner { margin-bottom: 14px; padding: 12px 14px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #166534; border-radius: 8px; font-size: 13px; font-weight: 600; display: inline-block; }
+  
+  /* Amount in words */
+  .words { margin-top: 15px; padding: 10px; background: #f9fafb; border-left: 3px solid #5b4b8a; font-size: 12px; color: #374151; }
+  .words strong { color: #1f2937; }
+  
+  /* Notes and footer */
+  .notes { margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px; }
+  .notes strong { color: #374151; }
+  
+  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; color: #6b7280; font-size: 11px; }
+  
+  /* Print styles */
+  @media print { 
+    body { padding: 0; margin: 0; }
+    button { display: none; }
+  }
 </style></head>
 <body>
-  <div class="head">
-    <div class="company">
+  <!-- Header with Logo -->
+  <div class="header">
+    <div class="logo">
+      <img src="${LOGO_BASE64}" alt="PureCuts Logo">
+    </div>
+    <div class="company-info">
       <div class="name">${esc(s.companyName)}</div>
-      <div>${esc(s.companyAddress)}</div>
-      <div>${esc(s.companyCity)}</div>
-      <div>${esc(s.companyState)}</div>
-      ${s.companyGstin ? `<div>GSTIN: ${esc(s.companyGstin)}</div>` : ""}
+      <div class="details">
+        <div>${esc(s.companyAddress)}</div>
+        <div>${esc(s.companyCity)}, ${esc(s.companyState)}</div>
+        <div>${esc(s.companyPhone)} | ${esc(s.companyEmail)}</div>
+        <div>${esc(s.companyWebsite)}</div>
+      </div>
+    </div>
+    <div class="invoice-title">
+      <div class="invoice-no">${esc(inv)}</div>
     </div>
   </div>
 
-  <div class="title">Customer Invoices ${esc(inv)}</div>
-
-  <div class="billto">
-    <div><strong>${esc(order.salonName)}</strong></div>
-    <div>Place of supply: ${esc(s.companyState.split(",")[0] || "Maharashtra")}</div>
+  <!-- Billing Section -->
+  <div class="billing-section">
+    <div class="bill-to">
+      <h3>Bill To</h3>
+      <div class="details">
+        <strong>${esc(order.salonName)}</strong>
+        ${salon?.phone ? `<div>${esc(salon.phone)}</div>` : ""}
+        ${salon?.address ? `<div>${esc(salon.address)}</div>` : ""}
+      </div>
+    </div>
   </div>
 
-  <div class="meta">
-    <div><div class="lbl">Invoice Date</div><div>${esc(date)}</div></div>
-    <div><div class="lbl">Due Date</div><div>${esc(date)}</div></div>
-    <div><div class="lbl">Source</div><div>${esc(order.orderNo)}</div></div>
-    <div><div class="lbl">Payment</div><div>${esc(order.paymentStatus)}</div></div>
+  <!-- Meta Information -->
+  <div class="meta-info">
+    <div class="meta-item">
+      <div class="meta-label">Invoice Date</div>
+      <div class="meta-value">${esc(date)}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Order Number</div>
+      <div class="meta-value">${esc(order.orderNo)}</div>
+    </div>
   </div>
 
+  <!-- Items Table -->
   <table>
     <thead>
       <tr>
@@ -119,37 +185,63 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings): string {
         <th>HSN/SAC</th>
         <th class="num">Quantity</th>
         <th class="num">Unit Price</th>
-        <th class="num">Taxes</th>
+        <th class="num">MRP</th>
+        <th class="num">Saving</th>
         <th class="num">Amount</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>
 
-  <div class="totals">
-    <div class="pc">Payment Communication: ${esc(inv)}</div>
-    <div class="totbox">
-      <div class="row"><span>Untaxed Amount</span><span>${money(order.subtotal - order.discountTotal)}</span></div>
-      ${order.discountTotal ? `<div class="row"><span>Discount</span><span>- ${money(order.discountTotal)}</span></div>` : ""}
-      ${hasGst ? `<div class="row"><span>GST</span><span>${money(order.gstTotal)}</span></div>` : ""}
-      ${(order.extraCharges ?? []).map((c) => `<div class="row"><span>${esc(c.label || "Charge")}</span><span>${money(c.amount)}</span></div>`).join("")}
-      <div class="row grand"><span>Total</span><span>${money(order.total)}</span></div>
-      <div class="words"><span class="cap">Total amount in words:</span><br>${esc(rupeesInWords(order.total))}</div>
+  <div class="savings-banner">You saved ${money(totalSaving)} on this purchase.</div>
+
+  <!-- Totals Section -->
+  <div class="totals-section">
+    <div class="totals-summary">
+      <div class="total-row">
+        <span class="total-label">Untaxed Amount</span>
+        <span class="total-value">${money(order.subtotal - order.discountTotal)}</span>
+      </div>
+      ${order.discountTotal ? `<div class="total-row">
+        <span class="total-label">Discount</span>
+        <span class="total-value">- ${money(order.discountTotal)}</span>
+      </div>` : ""}
+      <div class="total-row">
+        <span class="total-label">Total Saving</span>
+        <span class="total-value">${money(totalSaving)}</span>
+      </div>
+      ${hasGst ? `<div class="total-row">
+        <span class="total-label">GST</span>
+        <span class="total-value">${money(order.gstTotal)}</span>
+      </div>` : ""}
+      ${(order.extraCharges ?? []).map((c) => `<div class="total-row">
+        <span class="total-label">${esc(c.label || "Charge")}</span>
+        <span class="total-value">${money(c.amount)}</span>
+      </div>`).join("")}
+      <div class="total-row grand">
+        <span class="total-label">Total Amount</span>
+        <span class="total-value">${money(order.total)}</span>
+      </div>
+      <div class="words">
+        <strong>Amount in Words:</strong><br>
+        ${esc(rupeesInWords(order.total))}
+      </div>
     </div>
   </div>
 
-  ${order.invoiceNote ? `<div style="margin-top:28px;color:#4b5563;font-size:12px;border-top:1px solid #e5e7eb;padding-top:10px"><strong>Note:</strong> ${esc(order.invoiceNote)}</div>` : ""}
+  <!-- Notes -->
+  ${order.invoiceNote ? `<div class="notes"><strong>Note:</strong> ${esc(order.invoiceNote)}</div>` : ""}
 
-  <div class="foot">
-    <div>${esc(s.companyPhone)} &nbsp; ${esc(s.companyEmail)} &nbsp; ${esc(s.companyWebsite)}</div>
+  <!-- Footer -->
+  <div class="footer">
     <div>Page 1 / 1</div>
   </div>
 </body></html>`;
 }
 
 // ---- Print / save-as-PDF in a clean popup window -------------------------
-export function printInvoice(order: SalesOrder, s: AppSettings) {
-  const html = buildInvoiceHtml(order, s);
+export function printInvoice(order: SalesOrder, s: AppSettings, salon?: Salon) {
+  const html = buildInvoiceHtml(order, s, salon);
   const w = window.open("", "_blank", "width=820,height=1000");
   if (!w) {
     // Popup blocked — fall back to a downloadable HTML file.
@@ -193,7 +285,7 @@ export function invoiceWhatsappText(order: SalesOrder, s: AppSettings): string {
     .join("\n");
 }
 
-export function shareInvoiceWhatsapp(order: SalesOrder, s: AppSettings, phone?: string) {
+export function shareInvoiceWhatsapp(order: SalesOrder, s: AppSettings, phone?: string, salon?: Salon) {
   const text = encodeURIComponent(invoiceWhatsappText(order, s));
   // Normalize an Indian number to wa.me format (digits only, default +91).
   let num = (phone || "").replace(/\D/g, "");

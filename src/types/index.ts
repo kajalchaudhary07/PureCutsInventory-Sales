@@ -76,6 +76,7 @@ export interface OrderLine {
   qty: number;
   price: number; // unit selling price
   cost: number; // unit cost (for profit)
+  originalPrice?: number; // MRP / list price for customer savings
   gstRate: number; // %
   discount: number; // amount on the line
 }
@@ -174,7 +175,6 @@ export interface AppSettings {
   companyEmail: string;
   companyWebsite: string;
   companyGstin: string;
-  defaultGst: number;
   invoicePrefix: string;
   currencySymbol: string;
   enableBarcode: boolean;

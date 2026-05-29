@@ -47,7 +47,7 @@ function transformEcommerceProduct(ecomProduct: any): Product {
     stock: ecomProduct.stock || 0,
     reserved: 0, // Start at 0, will be managed by inventory
     reorderLevel: 10, // Default reorder level
-    costPrice: 0, // Leave empty for manual entry - user will add their cost
+    costPrice: ecomProduct.costPrice ?? 0, // Preserve saved cost
     sellingPrice: ecomProduct.price || 0, // Current selling price from app
     gstRate: 18, // Default GST rate
     barcode: ecomProduct.barcode,

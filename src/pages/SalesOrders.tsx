@@ -19,7 +19,8 @@ const STATUSES: SalesStatus[] = ["Pending", "Packed", "Delivered", "Cancelled", 
 function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: () => void }) {
   const settings = useUIStore((s) => s.settings);
   const products = useDataStore((s) => s.products);
-  const salonPhone = useDataStore((s) => (order ? s.salons.find((x) => x.id === order.salonId)?.phone : undefined));
+  const salon = useDataStore((s) => (order ? s.salons.find((x) => x.id === order.salonId) : undefined));
+  const salonPhone = salon?.phone;
   const [editing, setEditing] = useState(false);
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [charges, setCharges] = useState<ExtraCharge[]>([]);
@@ -55,7 +56,7 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
   const addProductLine = (p: Product) => {
     setLines((prev) => [
       ...prev,
-      { productId: p.id, name: p.name, sku: p.sku, qty: 1, price: p.sellingPrice, cost: p.costPrice, gstRate: p.gstRate, discount: 0 },
+      { productId: p.id, name: p.name, sku: p.sku, qty: 1, price: p.sellingPrice, cost: p.costPrice, originalPrice: p.originalPrice, gstRate: p.gstRate, discount: 0 },
     ]);
     setSearch("");
   };
@@ -97,7 +98,7 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
         editing ? (
           <>
             <Button variant="secondary" onClick={cancelEdit}><X className="h-4 w-4" /> Cancel</Button>
-            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(workingOrder, settings, salonPhone)}>
+            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(workingOrder, settings, salonPhone, salon)}>
               <MessageCircle className="h-4 w-4" /> WhatsApp
             </Button>
             <Button onClick={() => (dirty ? setAskSave(true) : setEditing(false))} disabled={!dirty}>
@@ -108,10 +109,10 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
           <>
             <Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" /> Edit invoice</Button>
             <Button variant="secondary" onClick={onClose}>Close</Button>
-            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(order, settings, salonPhone)}>
+            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(order, settings, salonPhone, salon)}>
               <MessageCircle className="h-4 w-4" /> WhatsApp
             </Button>
-            <Button onClick={() => printInvoice(order, settings)}><Printer className="h-4 w-4" /> Print / PDF</Button>
+            <Button onClick={() => printInvoice(order, settings, salon)}><Printer className="h-4 w-4" /> Print / PDF</Button>
           </>
         )
       }
@@ -242,7 +243,7 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
       </div>
 
       {/* Quick create-new-product */}
-      <QuickAddProduct open={quickAdd} onClose={() => setQuickAdd(false)} defaultGst={settings.defaultGst} onCreated={(p) => { addProductLine(p); setQuickAdd(false); }} />
+      <QuickAddProduct open={quickAdd} onClose={() => setQuickAdd(false)} onCreated={(p) => { addProductLine(p); setQuickAdd(false); }} />
 
       {/* "Ask each time" save-scope prompt */}
       <Modal
@@ -275,11 +276,11 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function QuickAddProduct({ open, onClose, defaultGst, onCreated }: { open: boolean; onClose: () => void; defaultGst: number; onCreated: (p: Product) => void }) {
-  const [f, setF] = useState({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: defaultGst });
+function QuickAddProduct({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (p: Product) => void }) {
+  const [f, setF] = useState({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: 18 });
   const set = (k: keyof typeof f, v: string | number) => setF({ ...f, [k]: v });
 
-  useEffect(() => { if (open) setF({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: defaultGst }); }, [open, defaultGst]);
+  useEffect(() => { if (open) setF({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: 18 }); }, [open]);
 
   const create = async () => {
     if (f.name.trim().length < 2) { toast.error("Enter a product name"); return; }

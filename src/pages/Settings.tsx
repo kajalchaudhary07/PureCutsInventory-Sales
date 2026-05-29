@@ -22,7 +22,7 @@ export default function Settings() {
 
   return (
     <div>
-      <PageHeader title="Settings" subtitle="Configure GST, invoicing, barcode and notifications."
+      <PageHeader title="Settings" subtitle="Configure invoicing, barcode and notifications."
         actions={<Button onClick={() => toast.success("Settings saved")}><Save className="h-4 w-4" /> Save</Button>} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -44,7 +44,6 @@ export default function Settings() {
         <Card className="p-5">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white"><Receipt className="h-4 w-4" /> GST & Invoicing</h3>
           <div className="space-y-4">
-            <Field label="Default GST rate (%)"><Input type="number" value={settings.defaultGst} onChange={(e) => setSettings({ defaultGst: Number(e.target.value) })} /></Field>
             <Field label="Invoice prefix"><Input value={settings.invoicePrefix} onChange={(e) => setSettings({ invoicePrefix: e.target.value })} /></Field>
           </div>
         </Card>

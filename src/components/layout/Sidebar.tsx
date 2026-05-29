@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/store/uiStore";
+import { LOGO_BASE64 } from "@/lib/logoBase64";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -44,13 +45,11 @@ export function Sidebar() {
       )}
     >
       <div className="flex h-14 items-center gap-2.5 px-4">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900">
-          <Boxes className="h-5 w-5" />
-        </div>
+        <img src={LOGO_BASE64} alt="PureCuts Logo" className="h-8 w-8 shrink-0 rounded-lg object-contain" />
         {sidebarOpen && (
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-slate-900 dark:text-white">Salon Inventory</div>
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">Admin Console</div>
+            <div className="truncate text-sm font-bold text-slate-900 dark:text-white">PureCuts</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Inventory</div>
           </div>
         )}
       </div>

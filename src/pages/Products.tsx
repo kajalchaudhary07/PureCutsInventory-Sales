@@ -28,6 +28,7 @@ const schema = z.object({
   reorderLevel: z.coerce.number().min(0),
   costPrice: z.coerce.number().min(0),
   sellingPrice: z.coerce.number().min(0),
+  originalPrice: z.coerce.number().min(0).optional(),
   gstRate: z.coerce.number().min(0).max(28),
   vendorName: z.string().optional(),
   barcode: z.string().optional(),
@@ -42,7 +43,7 @@ function ProductForm({ open, onClose, editing }: { open: boolean; onClose: () =>
     resolver: zodResolver(schema),
     values: editing
       ? { ...editing }
-      : { name: "", sku: "", brand: "", category: "", unit: "pcs", stock: 0, reorderLevel: 10, costPrice: 0, sellingPrice: 0, gstRate: 18, vendorName: "", barcode: "" },
+      : { name: "", sku: "", brand: "", category: "", unit: "pcs", stock: 0, reorderLevel: 10, costPrice: 0, sellingPrice: 0, originalPrice: 0, gstRate: 18, vendorName: "", barcode: "" },
   });
 
   const onSubmit = async (v: FormValues) => {
@@ -57,6 +58,7 @@ function ProductForm({ open, onClose, editing }: { open: boolean; onClose: () =>
       reorderLevel: Number(v.reorderLevel),
       costPrice: Number(v.costPrice),
       sellingPrice: Number(v.sellingPrice),
+      originalPrice: v.originalPrice ? Number(v.originalPrice) : undefined,
       gstRate: Number(v.gstRate),
     };
     await saveDoc("products", p);
@@ -89,6 +91,7 @@ function ProductForm({ open, onClose, editing }: { open: boolean; onClose: () =>
         <Field label="Opening stock"><Input type="number" {...register("stock")} /></Field>
         <Field label="Reorder level"><Input type="number" {...register("reorderLevel")} /></Field>
         <Field label="Cost price (₹)"><Input type="number" step="0.01" {...register("costPrice")} /></Field>
+        <Field label="MRP (₹)"><Input type="number" step="0.01" {...register("originalPrice")} /></Field>
         <Field label="Selling price (₹)"><Input type="number" step="0.01" {...register("sellingPrice")} /></Field>
         <Field label="GST %"><Input type="number" {...register("gstRate")} /></Field>
         <Field label="Vendor">
@@ -135,6 +138,10 @@ export default function Products() {
       (status === "all" || p.status === status) &&
       (stockFilter === "all" || (stockFilter === "out" ? isOut(p) : isLow(p) && !isOut(p)))
   );
+
+  const categoryTotalCost = useMemo(() => {
+    return rows.reduce((s, p) => s + (available(p) * (p.costPrice || 0)), 0);
+  }, [rows]);
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
   const openEdit = (p: Product) => { setEditing(p); setFormOpen(true); setMenu(null); };
@@ -299,7 +306,7 @@ export default function Products() {
     <div>
       <PageHeader
         title="Products"
-        subtitle={`${rows.length} products`}
+        subtitle={`${rows.length} products · Total cost: ${inr(categoryTotalCost)}`}
         actions={
           <>
             <div className="flex overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
