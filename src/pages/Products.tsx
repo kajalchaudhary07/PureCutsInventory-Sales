@@ -113,6 +113,10 @@ export default function Products() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  
+  // Track editing state with a Map for each cell
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [cellValues, setCellValues] = useState<Map<string, string>>(new Map());
 
   // Allow other pages to deep-link here, e.g. /products?stock=low or ?stock=out
   useEffect(() => {
@@ -184,15 +188,17 @@ export default function Products() {
   };
 
   const EditableCell = ({ value, field, product }: { value: number; field: "stock" | "costPrice" | "originalPrice" | "sellingPrice"; product: Product }) => {
-    const [isEditing, setIsEditing] = useState(false);
-    const [tempValue, setTempValue] = useState(value.toString());
+    const cellKey = `${product.id}-${field}`;
+    const isEditing = editingCell === cellKey;
+    const tempValue = isEditing ? (cellValues.get(cellKey) || value.toString()) : value.toString();
 
     const handleBlur = async () => {
-      const numValue = parseFloat(tempValue);
+      const savedValue = cellValues.get(cellKey) || value.toString();
+      const numValue = parseFloat(savedValue);
       if (!isNaN(numValue)) {
         await updateField(product, field, numValue);
       }
-      setIsEditing(false);
+      setEditingCell(null);
     };
 
     if (isEditing) {
@@ -202,14 +208,17 @@ export default function Products() {
           type="number"
           step="0.01"
           value={tempValue}
-          onChange={(e) => setTempValue(e.target.value)}
+          onChange={(e) => {
+            const newMap = new Map(cellValues);
+            newMap.set(cellKey, e.target.value);
+            setCellValues(newMap);
+          }}
           onBlur={handleBlur}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               handleBlur();
             } else if (e.key === "Escape") {
-              setTempValue(value.toString());
-              setIsEditing(false);
+              setEditingCell(null);
             }
           }}
           className="w-24 rounded border-2 border-blue-500 bg-blue-50 px-2 py-1 text-sm tabular-nums dark:bg-slate-700 dark:text-white"
@@ -220,8 +229,10 @@ export default function Products() {
     return (
       <button
         onClick={() => {
-          setTempValue(value.toString());
-          setIsEditing(true);
+          const newMap = new Map(cellValues);
+          newMap.set(cellKey, value.toString());
+          setCellValues(newMap);
+          setEditingCell(cellKey);
         }}
         className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-sm tabular-nums text-left hover:border-slate-400 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
         title="Click to edit"

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { Toaster } from "react-hot-toast";
@@ -80,52 +80,58 @@ export default function App() {
     if (user && isAdmin) return initData();
   }, [user, isAdmin]);
 
-  if (!ready) {
-    return <div className="grid min-h-screen place-items-center bg-slate-900 text-slate-300">Loading…</div>;
-  }
-
-  if (!user) return <Login />;
-
-  if (isFirebaseConfigured && !isAdmin) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-slate-900 px-4 text-center">
-        <div className="max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
-          <h1 className="text-lg font-bold text-slate-900">Access denied</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            {user.email} is signed in but is not an authorized super-admin. Add a document with this user's UID to the
-            <code className="mx-1">admins</code> collection.
-          </p>
-          <button onClick={() => auth && signOut(auth)} className="mt-5 w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white">
-            Sign out
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <Toaster position="top-right" toastOptions={{ style: { fontSize: 14 } }} />
         <Suspense fallback={<PageSkeleton />}>
-          <Routes>
-            <Route element={<DashboardLayout />}>
-              <Route index element={<DashboardHome />} />
-              <Route path="products" element={<Products />} />
-              <Route path="products/:id" element={<ProductDetails />} />
-              <Route path="item-groups" element={<ItemGroups />} />
-              <Route path="stock" element={<StockManagement />} />
-              <Route path="purchase-orders" element={<PurchaseOrders />} />
-              <Route path="sales-orders" element={<SalesOrders />} />
-              <Route path="new-order" element={<ManualOrderEntry />} />
-              <Route path="salons" element={<Salons />} />
-              <Route path="vendors" element={<Vendors />} />
-              <Route path="analytics" element={<Analytics />} />
-              <Route path="business-intelligence" element={<BusinessIntelligence />} />
-              <Route path="activity" element={<ActivityLogs />} />
-              <Route path="settings" element={<Settings />} />
-            </Route>
-          </Routes>
+          {!ready ? (
+            <div className="grid min-h-screen place-items-center bg-slate-900 text-slate-300">Loading…</div>
+          ) : (
+            <Routes>
+              {!user ? (
+                <>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="*" element={<Navigate to="/login" replace />} />
+                </>
+              ) : isFirebaseConfigured && !isAdmin ? (
+                <Route path="*" element={
+                  <div className="grid min-h-screen place-items-center bg-slate-900 px-4 text-center">
+                    <div className="max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
+                      <h1 className="text-lg font-bold text-slate-900">Access denied</h1>
+                      <p className="mt-2 text-sm text-slate-500">
+                        {user.email} is signed in but is not an authorized super-admin. Add a document with this user's UID to the
+                        <code className="mx-1">admins</code> collection.
+                      </p>
+                      <button onClick={() => auth && signOut(auth)} className="mt-5 w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white">
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                } />
+              ) : (
+                <>
+                  <Route path="/login" element={<Navigate to="/" replace />} />
+                  <Route element={<DashboardLayout />}>
+                    <Route index element={<DashboardHome />} />
+                    <Route path="products" element={<Products />} />
+                    <Route path="products/:id" element={<ProductDetails />} />
+                    <Route path="item-groups" element={<ItemGroups />} />
+                    <Route path="stock" element={<StockManagement />} />
+                    <Route path="purchase-orders" element={<PurchaseOrders />} />
+                    <Route path="sales-orders" element={<SalesOrders />} />
+                    <Route path="new-order" element={<ManualOrderEntry />} />
+                    <Route path="salons" element={<Salons />} />
+                    <Route path="vendors" element={<Vendors />} />
+                    <Route path="analytics" element={<Analytics />} />
+                    <Route path="business-intelligence" element={<BusinessIntelligence />} />
+                    <Route path="activity" element={<ActivityLogs />} />
+                    <Route path="settings" element={<Settings />} />
+                  </Route>
+                </>
+              )}
+            </Routes>
+          )}
         </Suspense>
       </BrowserRouter>
     </ErrorBoundary>

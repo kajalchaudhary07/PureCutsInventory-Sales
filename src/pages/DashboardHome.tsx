@@ -68,7 +68,7 @@ export default function DashboardHome() {
     limit: 6,
   });
   const movement = movementByDay(stockMovements, 7);
-  const lowItems = products.filter((p) => isLow(p)).slice(0, 6);
+  const lowItems = products.filter((p) => isLow(p) && !p.inventoryOnly).slice(0, 6);
   const recentOrders = [...salesOrders].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
   const recentMoves = [...stockMovements].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
   const recentPO = [...purchaseOrders].sort((a, b) => b.createdAt - a.createdAt).slice(0, 4);
