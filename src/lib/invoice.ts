@@ -74,16 +74,13 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salo
   body { font-family: 'Segoe UI', Trebuchet MS, Helvetica, Arial, sans-serif; color: #1f2937; padding: 40px; font-size: 13px; line-height: 1.5; }
   
   /* Header with logo and company info */
-  .header { display: flex; gap: 20px; margin-bottom: 30px; align-items: flex-start; border-bottom: 2px solid #5b4b8a; padding-bottom: 20px; }
+  .header { display: flex; gap: 20px; margin-bottom: 30px; align-items: center; border-bottom: 2px solid #5b4b8a; padding-bottom: 20px; }
+  .logo { display: flex; align-items: center; }
   .logo img { height: 70px; width: auto; }
   .company-info { flex: 1; }
   .company-info .name { font-size: 24px; font-weight: 700; color: #5b4b8a; margin-bottom: 5px; }
   .company-info .details { font-size: 12px; color: #6b7280; line-height: 1.6; }
   .company-info .details div { margin-bottom: 3px; }
-  
-  .invoice-title { text-align: right; }
-  .invoice-no { font-size: 28px; font-weight: 700; color: #5b4b8a; }
-  .invoice-date { font-size: 12px; color: #6b7280; margin-top: 5px; }
   
   /* Bill To section */
   .billing-section { display: flex; gap: 40px; margin-bottom: 30px; }
@@ -148,9 +145,6 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salo
         <div>${esc(s.companyWebsite)}</div>
       </div>
     </div>
-    <div class="invoice-title">
-      <div class="invoice-no">${esc(inv)}</div>
-    </div>
   </div>
 
   <!-- Billing Section -->
@@ -162,18 +156,6 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salo
         ${salon?.phone ? `<div>${esc(salon.phone)}</div>` : ""}
         ${salon?.address ? `<div>${esc(salon.address)}</div>` : ""}
       </div>
-    </div>
-  </div>
-
-  <!-- Meta Information -->
-  <div class="meta-info">
-    <div class="meta-item">
-      <div class="meta-label">Invoice Date</div>
-      <div class="meta-value">${esc(date)}</div>
-    </div>
-    <div class="meta-item">
-      <div class="meta-label">Order Number</div>
-      <div class="meta-value">${esc(order.orderNo)}</div>
     </div>
   </div>
 
