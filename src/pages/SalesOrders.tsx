@@ -1,15 +1,15 @@
 import { useMemo, useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { Plus, FileText, Printer, Pencil, Save, X, MessageCircle, Trash2, Search, PackagePlus, Bell, Copy, Truck } from "lucide-react";
+import { Plus, FileText, Printer, Pencil, Save, X, MessageCircle, Trash2, Search, PackagePlus, Bell, Copy, Truck, Clock, Package, PackageCheck, XCircle, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Button, Card, Input, Textarea, Select, PageHeader, StatCard, Badge, Field } from "@/components/ui/primitives";
+import { Button, Card, Input, Textarea, Select, PageHeader, StatCard, StatusCountCard, Badge, Field } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { useDataStore } from "@/store/dataStore";
 import { useUIStore } from "@/store/uiStore";
 import { setOrderStatus, updateOrderPricing, saveDoc, logActivity } from "@/services/data";
 import { inr, num, fmtDateTime, uid } from "@/lib/utils";
-import { lineGst, lineNet, orderTotals } from "@/lib/calc";
+import { lineGst, lineNet, orderTotals, countsForRevenue } from "@/lib/calc";
 import { printInvoice, shareInvoiceWhatsapp } from "@/lib/invoice";
 import { paymentReminderDraft, orderUpdateDraft, shareTextWhatsapp } from "@/lib/messages";
 import type { ExtraCharge, OrderLine, Product, SalesOrder, SalesStatus } from "@/types";
@@ -336,12 +336,17 @@ export default function SalesOrders() {
   const [notify, setNotify] = useState<SalesOrder | null>(null);
 
   const stats = useMemo(() => {
-    const valid = orders.filter((o) => o.status !== "Cancelled");
+    const valid = orders.filter(countsForRevenue);
+    const countByStatus = (s: SalesStatus) => orders.filter((o) => o.status === s).length;
     return {
       total: orders.length,
       revenue: valid.reduce((s, o) => s + o.total, 0),
       profit: valid.reduce((s, o) => s + o.profit, 0),
-      pending: orders.filter((o) => o.status === "Pending").length,
+      pending: countByStatus("Pending"),
+      packed: countByStatus("Packed"),
+      delivered: countByStatus("Delivered"),
+      returned: countByStatus("Returned"),
+      cancelled: countByStatus("Cancelled"),
     };
   }, [orders]);
 
@@ -361,9 +366,18 @@ export default function SalesOrders() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={FileText} label="Total Orders" value={num(stats.total)} />
-        <StatCard icon={FileText} label="Revenue" value={inr(stats.revenue)} accent="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" />
-        <StatCard icon={FileText} label="Profit" value={inr(stats.profit)} accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
+        <StatCard icon={FileText} label="Revenue" value={inr(stats.revenue)} sub="delivered only" accent="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" />
+        <StatCard icon={FileText} label="Profit" value={inr(stats.profit)} sub="delivered only" accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
         <StatCard icon={FileText} label="Pending" value={num(stats.pending)} accent="bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" />
+      </div>
+
+      {/* Per-status count cards — click to filter the list below. */}
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <StatusCountCard icon={Clock} label="Pending" value={stats.pending} active={statusTab === "Pending"} onClick={() => setStatusTab(statusTab === "Pending" ? "all" : "Pending")} accent="bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" />
+        <StatusCountCard icon={Package} label="Packed" value={stats.packed} active={statusTab === "Packed"} onClick={() => setStatusTab(statusTab === "Packed" ? "all" : "Packed")} accent="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" />
+        <StatusCountCard icon={PackageCheck} label="Delivered" value={stats.delivered} active={statusTab === "Delivered"} onClick={() => setStatusTab(statusTab === "Delivered" ? "all" : "Delivered")} accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
+        <StatusCountCard icon={RotateCcw} label="Returned" value={stats.returned} active={statusTab === "Returned"} onClick={() => setStatusTab(statusTab === "Returned" ? "all" : "Returned")} accent="bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300" />
+        <StatusCountCard icon={XCircle} label="Cancelled" value={stats.cancelled} active={statusTab === "Cancelled"} onClick={() => setStatusTab(statusTab === "Cancelled" ? "all" : "Cancelled")} accent="bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300" />
       </div>
 
       <div className="mb-4 mt-6 flex flex-wrap items-center gap-2">

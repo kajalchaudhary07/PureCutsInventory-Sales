@@ -1,5 +1,13 @@
 import type { OrderLine, Product, SalesOrder, StockMovement } from "@/types";
 
+// ---- Revenue / profit recognition policy --------------------------------
+// Revenue and profit are recognised ONLY for Delivered orders. Pending,
+// Packed, Cancelled and Returned orders appear in lists but never contribute
+// to revenue/profit totals. This single predicate is the source of truth so
+// every page stays consistent automatically.
+export const countsForRevenue = (o: SalesOrder) => o.status === "Delivered";
+export const revenueOrders = (orders: SalesOrder[]) => orders.filter(countsForRevenue);
+
 export const available = (p: Product) => p.stock - p.reserved;
 export const margin = (p: Product) =>
   p.sellingPrice > 0 ? ((p.sellingPrice - p.costPrice) / p.sellingPrice) * 100 : 0;
@@ -38,7 +46,7 @@ export function salesByDay(orders: SalesOrder[], days = 7) {
     const start = d.getTime();
     const end = start + 86400000;
     const dayOrders = orders.filter(
-      (o) => o.createdAt >= start && o.createdAt < end && o.status !== "Cancelled"
+      (o) => o.createdAt >= start && o.createdAt < end && countsForRevenue(o)
     );
     out.push({
       label: d.toLocaleDateString("en-IN", { weekday: "short" }),
@@ -57,7 +65,7 @@ export function salesByMonth(orders: SalesOrder[], months = 6) {
     const start = d.getTime();
     const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
     const mo = orders.filter(
-      (o) => o.createdAt >= start && o.createdAt < end && o.status !== "Cancelled"
+      (o) => o.createdAt >= start && o.createdAt < end && countsForRevenue(o)
     );
     out.push({
       label: d.toLocaleDateString("en-IN", { month: "short" }),
@@ -71,7 +79,7 @@ export function salesByMonth(orders: SalesOrder[], months = 6) {
 export function topProducts(orders: SalesOrder[], limit = 5) {
   const map = new Map<string, { name: string; qty: number; revenue: number }>();
   orders
-    .filter((o) => o.status !== "Cancelled")
+    .filter(countsForRevenue)
     .forEach((o) =>
       o.lines.forEach((l) => {
         const cur = map.get(l.productId) || { name: l.name, qty: 0, revenue: 0 };
@@ -86,7 +94,7 @@ export function topProducts(orders: SalesOrder[], limit = 5) {
 export function topSalons(orders: SalesOrder[], limit = 5) {
   const map = new Map<string, { name: string; revenue: number }>();
   orders
-    .filter((o) => o.status !== "Cancelled")
+    .filter(countsForRevenue)
     .forEach((o) => {
       const cur = map.get(o.salonId) || { name: o.salonName, revenue: 0 };
       cur.revenue += o.total;
@@ -104,7 +112,7 @@ export function salonsRanked(
   const { by, minRevenue = 0, minProfit = 0, limit = 5 } = opts;
   const map = new Map<string, { name: string; revenue: number; profit: number }>();
   orders
-    .filter((o) => o.status !== "Cancelled")
+    .filter(countsForRevenue)
     .forEach((o) => {
       const cur = map.get(o.salonId) || { name: o.salonName, revenue: 0, profit: 0 };
       cur.revenue += o.total;

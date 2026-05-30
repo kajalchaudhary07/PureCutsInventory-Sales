@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, Truck, Trash2, PackageCheck } from "lucide-react";
-import { Button, Card, Field, Input, Select, PageHeader, StatCard } from "@/components/ui/primitives";
+import { Plus, Truck, Trash2, PackageCheck, Pencil, Save, X, CreditCard, Wallet } from "lucide-react";
+import { Button, Card, Field, Input, Select, PageHeader, StatCard, Badge } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { useDataStore } from "@/store/dataStore";
-import { saveDoc, receivePurchase, logActivity } from "@/services/data";
+import { saveDoc, updatePurchaseOrder, purchasePaymentStatus, logActivity } from "@/services/data";
 import { inr, num, fmtDate, uid } from "@/lib/utils";
-import type { PurchaseLine, PurchaseOrder } from "@/types";
+import type { PurchaseLine, PurchaseOrder, PurchasePaymentStatus } from "@/types";
 
 function CreatePO({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { vendors, products } = useDataStore();
@@ -32,6 +32,8 @@ function CreatePO({ open, onClose }: { open: boolean; onClose: () => void }) {
       lines,
       total,
       status: "Sent",
+      paidAmount: 0,
+      paymentStatus: "Unpaid",
       createdAt: Date.now(),
     };
     await saveDoc("purchaseOrders", po);
@@ -75,32 +77,117 @@ function CreatePO({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-function ReceiveModal({ po, onClose }: { po: PurchaseOrder | null; onClose: () => void }) {
-  const [recv, setRecv] = useState<Record<string, number>>({});
+// Small badge that maps a purchase payment status to a colour.
+function PaymentBadge({ status }: { status: PurchasePaymentStatus }) {
+  const color = status === "Paid" ? "emerald" : status === "Partial" ? "amber" : "rose";
+  return <Badge color={color}>{status}</Badge>;
+}
+
+function EditPOModal({ po, onClose }: { po: PurchaseOrder | null; onClose: () => void }) {
   if (!po) return null;
+  return <EditPOForm po={po} onClose={onClose} />;
+}
+
+function EditPOForm({ po, onClose }: { po: PurchaseOrder; onClose: () => void }) {
+  // Absolute received qty per line (defaults to what's already recorded).
+  const [received, setReceived] = useState<Record<string, number>>(
+    () => Object.fromEntries(po.lines.map((l) => [l.productId, l.received]))
+  );
+  const [paidAmount, setPaidAmount] = useState(po.paidAmount ?? 0);
+
+  const setLineRecv = (productId: string, qty: number, max: number) =>
+    setReceived((r) => ({ ...r, [productId]: Math.max(0, Math.min(max, Math.floor(qty || 0))) }));
+
+  const orderedUnits = po.lines.reduce((s, l) => s + l.qty, 0);
+  const recvUnits = po.lines.reduce((s, l) => s + (received[l.productId] ?? l.received), 0);
+  const allReceived = po.lines.every((l) => (received[l.productId] ?? l.received) >= l.qty);
+  const someReceived = po.lines.some((l) => (received[l.productId] ?? l.received) > 0);
+  const previewStatus: PurchaseOrder["status"] = allReceived ? "Received" : someReceived ? "Partial" : po.status;
+  const balance = Math.max(0, po.total - paidAmount);
+  const payStatus = purchasePaymentStatus(paidAmount, po.total);
+
   const submit = async () => {
-    await receivePurchase(po, recv);
-    toast.success("Inventory received");
-    setRecv({}); onClose();
+    await updatePurchaseOrder(po, { received, paidAmount });
+    toast.success("Purchase order updated");
+    onClose();
   };
+
   return (
-    <Modal open={!!po} onClose={onClose} title={`Receive — ${po.poNo}`} wide
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={submit}><PackageCheck className="h-4 w-4" /> Confirm receipt</Button></>}>
-      <div className="space-y-2">
-        {po.lines.map((l) => {
-          const remaining = l.qty - l.received;
-          return (
-            <div key={l.productId} className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-slate-900 dark:text-white">{l.name}</div>
-                <div className="text-xs text-slate-400">Ordered {l.qty} · received {l.received} · remaining {remaining}</div>
+    <Modal
+      open
+      onClose={onClose}
+      title={`Edit — ${po.poNo}`}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}><X className="h-4 w-4" /> Cancel</Button>
+          <Button onClick={submit}><Save className="h-4 w-4" /> Save</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {/* Receiving summary */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <PackageCheck className="h-4 w-4" />
+          <span>Received <b className="tabular-nums">{recvUnits}</b> / <b className="tabular-nums">{orderedUnits}</b> units</span>
+          <span className="ml-auto flex items-center gap-1.5">Status will be <StatusBadge value={previewStatus} /></span>
+        </div>
+
+        {/* Per-line received quantity */}
+        <div className="space-y-2">
+          {po.lines.map((l) => {
+            const val = received[l.productId] ?? l.received;
+            return (
+              <div key={l.productId} className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-900 dark:text-white">{l.name}</div>
+                  <div className="text-xs text-slate-400">Ordered {l.qty} · @ {inr(l.cost)}</div>
+                </div>
+                <div className="w-28">
+                  <Field label="Received">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={l.qty}
+                      value={val}
+                      onChange={(e) => setLineRecv(l.productId, Number(e.target.value), l.qty)}
+                    />
+                  </Field>
+                </div>
+                <div className="w-12 pt-6 text-right text-xs tabular-nums text-slate-400">/ {l.qty}</div>
               </div>
-              <div className="w-28">
-                <Input type="number" min={0} max={remaining} placeholder="Receive now" value={recv[l.productId] ?? ""} onChange={(e) => setRecv({ ...recv, [l.productId]: Math.min(remaining, Number(e.target.value)) })} disabled={remaining <= 0} />
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        {/* Payment block */}
+        <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+            <CreditCard className="h-4 w-4" /> Payment
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label="Total purchase amount">
+              <Input value={inr(po.total)} disabled />
+            </Field>
+            <Field label="Amount paid">
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={paidAmount}
+                onChange={(e) => setPaidAmount(Math.max(0, Number(e.target.value)))}
+              />
+            </Field>
+            <Field label="Balance">
+              <Input value={inr(balance)} disabled />
+            </Field>
+          </div>
+          <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+            <Wallet className="h-4 w-4" />
+            <span className="tabular-nums">{inr(paidAmount)} / {inr(po.total)}</span>
+            <span className="ml-auto"><PaymentBadge status={payStatus} /></span>
+          </div>
+        </div>
       </div>
     </Modal>
   );
@@ -109,13 +196,16 @@ function ReceiveModal({ po, onClose }: { po: PurchaseOrder | null; onClose: () =
 export default function PurchaseOrders() {
   const { purchaseOrders, vendors } = useDataStore();
   const [createOpen, setCreateOpen] = useState(false);
-  const [receiving, setReceiving] = useState<PurchaseOrder | null>(null);
+  const [editing, setEditing] = useState<PurchaseOrder | null>(null);
   const [filter, setFilter] = useState("all");
 
   const stats = useMemo(() => ({
     pending: purchaseOrders.filter((p) => ["Draft", "Sent", "Partial"].includes(p.status)).length,
     received: purchaseOrders.filter((p) => p.status === "Received").length,
     value: purchaseOrders.reduce((s, p) => s + p.total, 0),
+    outstanding: purchaseOrders
+      .filter((p) => p.status !== "Cancelled")
+      .reduce((s, p) => s + Math.max(0, p.total - (p.paidAmount ?? 0)), 0),
     vendors: vendors.length,
   }), [purchaseOrders, vendors]);
 
@@ -132,7 +222,7 @@ export default function PurchaseOrders() {
         <StatCard icon={Truck} label="Pending POs" value={num(stats.pending)} accent="bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" />
         <StatCard icon={PackageCheck} label="Received POs" value={num(stats.received)} accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
         <StatCard icon={Truck} label="Total Purchase Value" value={inr(stats.value)} accent="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" />
-        <StatCard icon={Truck} label="Vendors" value={num(stats.vendors)} />
+        <StatCard icon={CreditCard} label="Amount Due" value={inr(stats.outstanding)} accent="bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300" />
       </div>
 
       <div className="mb-4 mt-6 flex flex-wrap gap-2">
@@ -160,11 +250,13 @@ export default function PurchaseOrders() {
                 </div>
                 <div className="text-right">
                   <div className="font-semibold tabular-nums text-slate-900 dark:text-white">{inr(po.total)}</div>
+                  {(po.paidAmount ?? 0) > 0 && (po.paidAmount ?? 0) < po.total && (
+                    <div className="text-xs text-rose-500 tabular-nums">due {inr(po.total - (po.paidAmount ?? 0))}</div>
+                  )}
                 </div>
                 <StatusBadge value={po.status} />
-                {po.status !== "Received" && po.status !== "Cancelled" && (
-                  <Button variant="secondary" onClick={() => setReceiving(po)}><PackageCheck className="h-4 w-4" /> Receive</Button>
-                )}
+                <PaymentBadge status={po.paymentStatus ?? purchasePaymentStatus(po.paidAmount ?? 0, po.total)} />
+                <Button variant="secondary" onClick={() => setEditing(po)}><Pencil className="h-4 w-4" /> Edit</Button>
               </div>
             </Card>
           );
@@ -173,7 +265,7 @@ export default function PurchaseOrders() {
       </div>
 
       <CreatePO open={createOpen} onClose={() => setCreateOpen(false)} />
-      <ReceiveModal po={receiving} onClose={() => setReceiving(null)} />
+      <EditPOModal po={editing} onClose={() => setEditing(null)} />
     </div>
   );
 }
