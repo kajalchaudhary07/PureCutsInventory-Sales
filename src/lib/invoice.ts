@@ -81,6 +81,9 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salo
   .company-info .name { font-size: 24px; font-weight: 700; color: #5b4b8a; margin-bottom: 5px; }
   .company-info .details { font-size: 12px; color: #6b7280; line-height: 1.6; }
   .company-info .details div { margin-bottom: 3px; }
+  .invoice-number { text-align: right; min-width: 180px; }
+  .invoice-number .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; margin-bottom: 6px; }
+  .invoice-number .value { font-size: 28px; font-weight: 700; color: #5b4b8a; }
   
   /* Bill To section */
   .billing-section { display: flex; gap: 40px; margin-bottom: 30px; }
@@ -144,6 +147,10 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salo
         <div>${esc(s.companyPhone)} | ${esc(s.companyEmail)}</div>
         <div>${esc(s.companyWebsite)}</div>
       </div>
+    </div>
+    <div class="invoice-number">
+      <div class="label">Invoice Number</div>
+      <div class="value">${esc(inv)}</div>
     </div>
   </div>
 
