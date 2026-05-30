@@ -122,7 +122,9 @@ export interface SalesOrder {
   total: number;
   profit: number;
   status: SalesStatus;
-  paymentStatus: PaymentStatus;
+  // Frontend payment tracking
+  paidAmount?: number;
+  paymentStatus?: PaymentStatus;
   createdAt: number;
   // Editable-invoice extras (all optional for backward compatibility).
   extraCharges?: ExtraCharge[]; // custom rows below GST (surge, packaging, round-off…)

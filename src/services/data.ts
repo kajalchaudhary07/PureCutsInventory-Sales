@@ -49,7 +49,8 @@ function transformEcommerceProduct(ecomProduct: any): Product {
     reserved: 0, // Start at 0, will be managed by inventory
     reorderLevel: 10, // Default reorder level
     costPrice: ecomProduct.costPrice ?? 0, // Preserve saved cost
-    sellingPrice: ecomProduct.price || 0, // Current selling price from app
+    // Accept either legacy `price` field or the normalized `sellingPrice` field
+    sellingPrice: (ecomProduct.sellingPrice ?? ecomProduct.price) || 0, // Current selling price from app
     gstRate: 18, // Default GST rate
     barcode: ecomProduct.barcode,
     vendorId: undefined,
@@ -155,7 +156,12 @@ export function logActivity(action: string, entity: string, detail: string, enti
 // ---- Business operations -------------------------------------------------
 
 export async function createSalesOrder(o: SalesOrder) {
-  await saveDoc("salesOrders", o);
+  // Ensure payment fields exist and are derived from paidAmount vs total
+  const paidAmount = (o as any).paidAmount ?? 0;
+  // Lazily infer payment status from paid amount
+  const paymentStatus = paidAmount <= 0 ? "Unpaid" : paidAmount >= o.total ? "Paid" : "Partial";
+  const orderToSave = { ...o, paidAmount, paymentStatus };
+  await saveDoc("salesOrders", orderToSave);
   for (const line of o.lines) {
     const p = useDataStore.getState().products.find((x) => x.id === line.productId);
     if (!p) continue;
@@ -178,10 +184,17 @@ export async function createSalesOrder(o: SalesOrder) {
     await saveDoc("salons", {
       ...salon,
       totalPurchases: salon.totalPurchases + o.total,
-      outstanding: salon.outstanding + (o.paymentStatus === "Paid" ? 0 : o.total),
+      outstanding: salon.outstanding + (paymentStatus === "Paid" ? 0 : o.total),
     });
   }
   logActivity("Created order", "salesOrder", `${o.channel} order · ${o.salonName} · ${inr(o.total)}`, o.orderNo);
+}
+
+// Derive payment status from amount paid vs total for sales orders.
+export function salesPaymentStatus(paidAmount: number, total: number) {
+  if (paidAmount <= 0) return "Unpaid" as const;
+  if (paidAmount >= total) return "Paid" as const;
+  return "Partial" as const;
 }
 
 export async function setOrderStatus(order: SalesOrder, status: SalesStatus) {

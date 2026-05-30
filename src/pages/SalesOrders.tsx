@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { useDataStore } from "@/store/dataStore";
 import { useUIStore } from "@/store/uiStore";
-import { setOrderStatus, updateOrderPricing, saveDoc, logActivity } from "@/services/data";
+import { setOrderStatus, updateOrderPricing, saveDoc, logActivity, salesPaymentStatus } from "@/services/data";
 import { inr, num, fmtDateTime, uid } from "@/lib/utils";
 import { lineGst, lineNet, orderTotals, countsForRevenue } from "@/lib/calc";
 import { printInvoice, shareInvoiceWhatsapp } from "@/lib/invoice";
@@ -359,6 +359,14 @@ export default function SalesOrders() {
     toast.success(`${o.orderNo} → ${status}`);
   };
 
+  const updatePaidAmount = async (o: SalesOrder, raw: string | number) => {
+    const v = Number(raw) || 0;
+    const paymentStatus = salesPaymentStatus(v, o.total);
+    await saveDoc("salesOrders", { ...o, paidAmount: v, paymentStatus });
+    logActivity("Recorded payment", "salesOrder", `${o.orderNo} → ${inr(v)} (${paymentStatus})`, o.orderNo);
+    toast.success("Payment saved");
+  };
+
   return (
     <div>
       <PageHeader title="Sales Orders" subtitle="Unified orders from app, phone & WhatsApp."
@@ -406,12 +414,23 @@ export default function SalesOrders() {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{o.salonName}</div>
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <StatusBadge value={o.channel} /> {o.lines.length} items · <Badge color={o.paymentStatus === "Paid" ? "emerald" : o.paymentStatus === "Partial" ? "amber" : "rose"}>{o.paymentStatus}</Badge>
+                  <StatusBadge value={o.channel} /> {o.lines.length} items · <Badge color={o.paymentStatus === "Paid" ? "emerald" : o.paymentStatus === "Partial" ? "amber" : "rose"}>{o.paymentStatus ?? "Unpaid"}</Badge>
                 </div>
               </div>
               <div className="text-right">
                 <div className="font-semibold tabular-nums text-slate-900 dark:text-white">{inr(o.total)}</div>
                 <div className="text-xs text-emerald-600">+{inr(o.profit)}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  <span className="mr-2">Paid:</span>
+                  <input
+                    defaultValue={o.paidAmount ?? 0}
+                    type="number"
+                    step="0.01"
+                    onBlur={(e) => updatePaidAmount(o, e.target.value)}
+                    className="inline-block w-28 rounded border border-slate-200 bg-white px-2 py-0.5 text-sm tabular-nums dark:border-slate-700 dark:bg-slate-800"
+                  />
+                  <div className="mt-1">Remaining: <span className="font-medium tabular-nums">{inr(Math.max(0, o.total - (o.paidAmount ?? 0)))}</span></div>
+                </div>
               </div>
               <Select value={o.status} onChange={(e) => changeStatus(o, e.target.value as SalesStatus)} className="w-auto">
                 {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
