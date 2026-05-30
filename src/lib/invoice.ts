@@ -71,10 +71,12 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salo
 <html><head><meta charset="utf-8"><title>Invoice ${esc(inv)}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Trebuchet MS, Helvetica, Arial, sans-serif; color: #1f2937; padding: 40px; font-size: 13px; line-height: 1.5; }
+  body { font-family: 'Segoe UI', Trebuchet MS, Helvetica, Arial, sans-serif; color: #1f2937; padding: 40px; font-size: 13px; line-height: 1.5; position: relative; }
+  .watermark { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0.05; z-index: 0; }
+  .watermark span { font-size: 48px; font-weight: 800; color: #5b4b8a; transform: rotate(-25deg); white-space: nowrap; letter-spacing: 0.2em; }
   
   /* Header with logo and company info */
-  .header { display: flex; gap: 20px; margin-bottom: 30px; align-items: center; border-bottom: 2px solid #5b4b8a; padding-bottom: 20px; }
+  .header { display: flex; gap: 20px; margin-bottom: 30px; align-items: center; border-bottom: 2px solid #5b4b8a; padding-bottom: 20px; z-index: 1; }
   .logo { display: flex; align-items: center; }
   .logo img { height: 70px; width: auto; }
   .company-info { flex: 1; }
@@ -134,6 +136,7 @@ export function buildInvoiceHtml(order: SalesOrder, s: AppSettings, salon?: Salo
   }
 </style></head>
 <body>
+  <div class="watermark"><span>PureCuts Pvt. Ltd.</span></div>
   <!-- Header with Logo -->
   <div class="header">
     <div class="logo">
