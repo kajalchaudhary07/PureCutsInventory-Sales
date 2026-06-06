@@ -56,6 +56,7 @@ function transformEcommerceProduct(ecomProduct: any): Product {
     groupId: ecomProduct.id, // For variant grouping if needed
     attributes: ecomProduct.size ? { Size: ecomProduct.size } : undefined,
     expiryTracking: false,
+    inventoryOnly: false, // App products are visible by default
     status: "active" as const,
     createdAt: ecomProduct.createdAt || Date.now(),
     updatedAt: ecomProduct.updatedAt || Date.now(),

@@ -31,6 +31,7 @@ const schema = z.object({
   gstRate: z.coerce.number().min(0).max(28),
   vendorName: z.string().optional(),
   barcode: z.string().optional(),
+  inventoryOnly: z.boolean().optional(),
 });
 type FormValues = z.input<typeof schema>;
 
@@ -42,7 +43,7 @@ function ProductForm({ open, onClose, editing }: { open: boolean; onClose: () =>
     resolver: zodResolver(schema),
     values: editing
       ? { ...editing }
-      : { name: "", sku: "", brand: "", category: "", unit: "pcs", stock: 0, reorderLevel: 10, costPrice: 0, sellingPrice: 0, gstRate: 18, vendorName: "", barcode: "" },
+      : { name: "", sku: "", brand: "", category: "", unit: "pcs", stock: 0, reorderLevel: 10, costPrice: 0, sellingPrice: 0, gstRate: 18, vendorName: "", barcode: "", inventoryOnly: false },
   });
 
   const onSubmit = async (v: FormValues) => {
@@ -50,6 +51,7 @@ function ProductForm({ open, onClose, editing }: { open: boolean; onClose: () =>
       id: editing?.id ?? uid(),
       reserved: editing?.reserved ?? 0,
       status: editing?.status ?? "active",
+      inventoryOnly: v.inventoryOnly ?? false,
       createdAt: editing?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
       ...v,
@@ -98,6 +100,10 @@ function ProductForm({ open, onClose, editing }: { open: boolean; onClose: () =>
           </Select>
         </Field>
       </div>
+      <div className="mt-4 flex items-center gap-2">
+        <input type="checkbox" id="inventoryOnly" {...register("inventoryOnly")} className="h-4 w-4 rounded border-gray-300" />
+        <label htmlFor="inventoryOnly" className="text-sm text-slate-700 dark:text-slate-300">Inventory only (hidden from app)</label>
+      </div>
     </Modal>
   );
 }
@@ -110,6 +116,7 @@ export default function Products() {
   const [cat, setCat] = useState("all");
   const [status, setStatus] = useState("all");
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
+  const [showInventoryOnly, setShowInventoryOnly] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
@@ -137,7 +144,8 @@ export default function Products() {
     (p) =>
       (cat === "all" || p.category === cat) &&
       (status === "all" || p.status === status) &&
-      (stockFilter === "all" || (stockFilter === "out" ? isOut(p) : isLow(p) && !isOut(p)))
+      (stockFilter === "all" || (stockFilter === "out" ? isOut(p) : isLow(p) && !isOut(p))) &&
+      (showInventoryOnly ? p.inventoryOnly : !p.inventoryOnly)
   );
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
@@ -157,8 +165,10 @@ export default function Products() {
     toast.success("Deleted"); setMenu(null);
   };
 
-  const statusBadge = (p: Product) =>
-    isOut(p) ? <StatusBadge value="Out" /> : isLow(p) ? <StatusBadge value="Low" /> : p.status === "archived" ? <StatusBadge value="Archived" /> : <StatusBadge value="In stock" />;
+  const statusBadge = (p: Product) => {
+    if (p.inventoryOnly) return <StatusBadge value="Inventory Only" variant="secondary" />;
+    return isOut(p) ? <StatusBadge value="Out" /> : isLow(p) ? <StatusBadge value="Low" /> : p.status === "archived" ? <StatusBadge value="Archived" /> : <StatusBadge value="In stock" />;
+  };
 
   const updateField = async (p: Product, field: "stock" | "costPrice" | "originalPrice" | "sellingPrice", newValue: number) => {
     const current = p[field];
@@ -339,6 +349,9 @@ export default function Products() {
           <option value="low">Low stock only</option>
           <option value="out">Out of stock only</option>
         </Select>
+        <Button variant={showInventoryOnly ? "default" : "secondary"} onClick={() => setShowInventoryOnly(!showInventoryOnly)} className="text-sm">
+          {showInventoryOnly ? "Showing Inventory Only" : "Show Inventory Only"}
+        </Button>
       </div>
 
       {view === "table" ? (

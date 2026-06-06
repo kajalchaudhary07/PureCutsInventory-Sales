@@ -26,6 +26,7 @@ export interface Product {
   attributes?: Record<string, string>; // { Size: "250ml", Shade: "Black" }
   expiryTracking?: boolean;
   status: EntityStatus;
+  inventoryOnly?: boolean; // If true, product is hidden from app display (inventory tracking only)
   createdAt: number;
   updatedAt: number;
 }

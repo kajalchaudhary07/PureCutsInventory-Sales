@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeFirestore, type Firestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const cfg = {
@@ -23,19 +23,10 @@ let storage: FirebaseStorage | null = null;
 if (isFirebaseConfigured) {
   app = initializeApp(cfg);
   auth = getAuth(app);
-  db = getFirestore(app);
-  storage = getStorage(app);
-
-  // Enable offline persistence - app works even without internet
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === "failed-precondition") {
-      // Multiple tabs open, persistence can only be enabled in one tab.
-      console.warn("Firestore persistence: Multiple tabs detected");
-    } else if (err.code === "unimplemented") {
-      // Browser doesn't support persistence.
-      console.warn("Firestore persistence: Not supported in this browser");
-    }
+  db = initializeFirestore(app, {
+    cache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   });
+  storage = getStorage(app);
 }
 
 export { app, auth, db, storage };
