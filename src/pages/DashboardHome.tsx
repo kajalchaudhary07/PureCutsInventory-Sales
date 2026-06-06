@@ -14,7 +14,7 @@ import { useDataStore } from "@/store/dataStore";
 import { inr, num, fmtDate, exportCsv, daysAgo } from "@/lib/utils";
 import {
   available, invValue, isLow, isOut, salesByDay, salesByMonth,
-  topProducts, salonsRanked, movementByDay,
+  topProducts, salonsRanked, movementByDay, countsForRevenue,
 } from "@/lib/calc";
 
 const palette = ["#0f172a", "#6366f1", "#10b981", "#f59e0b", "#f43f5e"];
@@ -42,7 +42,7 @@ export default function DashboardHome() {
     const active = products.filter((p) => p.status === "active");
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
     const todayStart = new Date().setHours(0, 0, 0, 0);
-    const valid = salesOrders.filter((o) => o.status !== "Cancelled");
+    const valid = salesOrders.filter(countsForRevenue);
     return {
       totalProducts: active.length,
       invValue: active.reduce((s, p) => s + invValue(p), 0),

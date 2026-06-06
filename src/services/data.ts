@@ -17,6 +17,7 @@ import type {
   OrderLine,
   Product,
   PurchaseOrder,
+  PurchasePaymentStatus,
   SalesOrder,
   SalesStatus,
   StockMovement,
@@ -47,8 +48,9 @@ function transformEcommerceProduct(ecomProduct: any): Product {
     stock: ecomProduct.stock || 0,
     reserved: 0, // Start at 0, will be managed by inventory
     reorderLevel: 10, // Default reorder level
-    costPrice: 0, // Leave empty for manual entry - user will add their cost
-    sellingPrice: ecomProduct.price || 0, // Current selling price from app
+    costPrice: ecomProduct.costPrice ?? 0, // Preserve saved cost
+    // Accept either legacy `price` field or the normalized `sellingPrice` field
+    sellingPrice: (ecomProduct.sellingPrice ?? ecomProduct.price) || 0, // Current selling price from app
     gstRate: 18, // Default GST rate
     barcode: ecomProduct.barcode,
     vendorId: undefined,
@@ -155,7 +157,12 @@ export function logActivity(action: string, entity: string, detail: string, enti
 // ---- Business operations -------------------------------------------------
 
 export async function createSalesOrder(o: SalesOrder) {
-  await saveDoc("salesOrders", o);
+  // Ensure payment fields exist and are derived from paidAmount vs total
+  const paidAmount = (o as any).paidAmount ?? 0;
+  // Lazily infer payment status from paid amount
+  const paymentStatus = paidAmount <= 0 ? "Unpaid" : paidAmount >= o.total ? "Paid" : "Partial";
+  const orderToSave = { ...o, paidAmount, paymentStatus };
+  await saveDoc("salesOrders", orderToSave);
   for (const line of o.lines) {
     const p = useDataStore.getState().products.find((x) => x.id === line.productId);
     if (!p) continue;
@@ -178,10 +185,17 @@ export async function createSalesOrder(o: SalesOrder) {
     await saveDoc("salons", {
       ...salon,
       totalPurchases: salon.totalPurchases + o.total,
-      outstanding: salon.outstanding + (o.paymentStatus === "Paid" ? 0 : o.total),
+      outstanding: salon.outstanding + (paymentStatus === "Paid" ? 0 : o.total),
     });
   }
   logActivity("Created order", "salesOrder", `${o.channel} order · ${o.salonName} · ${inr(o.total)}`, o.orderNo);
+}
+
+// Derive payment status from amount paid vs total for sales orders.
+export function salesPaymentStatus(paidAmount: number, total: number) {
+  if (paidAmount <= 0) return "Unpaid" as const;
+  if (paidAmount >= total) return "Paid" as const;
+  return "Partial" as const;
 }
 
 export async function setOrderStatus(order: SalesOrder, status: SalesStatus) {
@@ -267,6 +281,72 @@ export async function receivePurchase(po: PurchaseOrder, receipts: Record<string
   const status: PurchaseOrder["status"] = fully ? "Received" : some ? "Partial" : po.status;
   await saveDoc("purchaseOrders", { ...po, lines, status });
   logActivity("Received PO", "purchaseOrder", `${po.poNo} — ${status}`, po.poNo);
+}
+
+// Derive payment status from amount paid vs total.
+export function purchasePaymentStatus(paidAmount: number, total: number): PurchasePaymentStatus {
+  if (paidAmount <= 0) return "Unpaid";
+  if (paidAmount >= total) return "Paid";
+  return "Partial";
+}
+
+// Edit a purchase order: set absolute received quantity per line + amount paid.
+// Stock is adjusted ONLY by the difference between the new and previously-recorded
+// received quantity, so editing repeatedly never double-counts stock. Receiving
+// status and payment status are recomputed from the resulting line/payment state.
+export async function updatePurchaseOrder(
+  po: PurchaseOrder,
+  edits: { received: Record<string, number>; paidAmount: number; cancelled?: boolean }
+) {
+  const lines = po.lines.map((l) => {
+    const target = Math.max(0, Math.min(l.qty, Math.floor(edits.received[l.productId] ?? l.received)));
+    return { ...l, received: target };
+  });
+
+  // Apply stock movements only for the delta on each line.
+  for (const l of lines) {
+    const prev = po.lines.find((x) => x.productId === l.productId)?.received ?? 0;
+    const delta = l.received - prev;
+    if (delta === 0) continue;
+    const p = useDataStore.getState().products.find((x) => x.id === l.productId);
+    if (!p) continue;
+    const newStock = p.stock + delta;
+    await saveDoc<Product>("products", { ...p, stock: newStock, costPrice: l.cost, updatedAt: Date.now() });
+    await saveDoc<StockMovement>("stockMovements", {
+      id: uid(),
+      productId: p.id,
+      productName: p.name,
+      type: delta > 0 ? "in" : "adjustment",
+      qty: delta,
+      reason: delta > 0 ? "PO receipt" : "PO receipt correction",
+      refNo: po.poNo,
+      balanceAfter: newStock,
+      createdAt: Date.now(),
+    });
+  }
+
+  const fully = lines.every((l) => l.received >= l.qty);
+  const some = lines.some((l) => l.received > 0);
+  const status: PurchaseOrder["status"] = edits.cancelled
+    ? "Cancelled"
+    : fully
+      ? "Received"
+      : some
+        ? "Partial"
+        : po.status === "Received" || po.status === "Partial"
+          ? "Sent"
+          : po.status;
+
+  const paidAmount = Math.max(0, edits.paidAmount || 0);
+  const paymentStatus = purchasePaymentStatus(paidAmount, po.total);
+
+  await saveDoc("purchaseOrders", { ...po, lines, status, paidAmount, paymentStatus });
+  logActivity(
+    "Edited PO",
+    "purchaseOrder",
+    `${po.poNo} — ${status} · ${paymentStatus} (${inr(paidAmount)}/${inr(po.total)})`,
+    po.poNo
+  );
 }
 
 // Apply edited invoice (lines, extra charges, note) back to a sales order,

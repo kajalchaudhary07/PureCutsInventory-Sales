@@ -1,7 +1,12 @@
 import type { Product, Salon, SalesOrder } from "@/types";
+import { countsForRevenue } from "@/lib/calc";
 
 const DAY = 86400000;
+// "valid" = excludes cancelled, used for activity / customer-health / quality
+// metrics. "rev" = revenue-recognised (Delivered only), used for every money
+// figure so revenue & profit are consistent across the whole app.
 const valid = (orders: SalesOrder[]) => orders.filter((o) => o.status !== "Cancelled");
+const rev = (orders: SalesOrder[]) => orders.filter(countsForRevenue);
 const inWindow = (o: SalesOrder, start: number, end: number) => o.createdAt >= start && o.createdAt < end;
 
 // ---- Period helpers ------------------------------------------------------
@@ -23,8 +28,8 @@ export function filterByRange(orders: SalesOrder[], range: Range): SalesOrder[] 
 // Sales growth for an explicit window vs the immediately preceding equal window.
 export function growthBetween(orders: SalesOrder[], from: number, to: number) {
   const span = to - from;
-  const cur = valid(orders).filter((o) => o.createdAt >= from && o.createdAt <= to).reduce((s, o) => s + o.total, 0);
-  const prev = valid(orders)
+  const cur = rev(orders).filter((o) => o.createdAt >= from && o.createdAt <= to).reduce((s, o) => s + o.total, 0);
+  const prev = rev(orders)
     .filter((o) => o.createdAt >= from - span && o.createdAt < from)
     .reduce((s, o) => s + o.total, 0);
   if (prev === 0) return cur > 0 ? 100 : 0;
@@ -33,11 +38,11 @@ export function growthBetween(orders: SalesOrder[], from: number, to: number) {
 
 // ---- Headline KPIs -------------------------------------------------------
 export function totalSales(orders: SalesOrder[]) {
-  return valid(orders).reduce((s, o) => s + o.total, 0);
+  return rev(orders).reduce((s, o) => s + o.total, 0);
 }
 
 export function grossProfit(orders: SalesOrder[]) {
-  return valid(orders).reduce((s, o) => s + o.profit, 0);
+  return rev(orders).reduce((s, o) => s + o.profit, 0);
 }
 
 // GMV counts ALL orders incl. cancelled/returned (gross merchandise pushed through).
@@ -50,15 +55,15 @@ export function ordersCount(orders: SalesOrder[]) {
 }
 
 export function averageOrderValue(orders: SalesOrder[]) {
-  const v = valid(orders);
+  const v = rev(orders);
   return v.length ? v.reduce((s, o) => s + o.total, 0) / v.length : 0;
 }
 
 // Sales growth %: current window vs the preceding equal window.
 export function salesGrowth(orders: SalesOrder[], daysBack = 30) {
   const { start, end, prevStart, prevEnd } = periodBounds(daysBack);
-  const cur = valid(orders).filter((o) => inWindow(o, start, end)).reduce((s, o) => s + o.total, 0);
-  const prev = valid(orders).filter((o) => inWindow(o, prevStart, prevEnd)).reduce((s, o) => s + o.total, 0);
+  const cur = rev(orders).filter((o) => inWindow(o, start, end)).reduce((s, o) => s + o.total, 0);
+  const prev = rev(orders).filter((o) => inWindow(o, prevStart, prevEnd)).reduce((s, o) => s + o.total, 0);
   if (prev === 0) return cur > 0 ? 100 : 0;
   return ((cur - prev) / prev) * 100;
 }
@@ -102,7 +107,7 @@ export function channelSplit(orders: SalesOrder[]) {
 // ---- Profit breakdowns ---------------------------------------------------
 export function profitByProduct(orders: SalesOrder[], limit = 8) {
   const map = new Map<string, { name: string; profit: number }>();
-  valid(orders).forEach((o) =>
+  rev(orders).forEach((o) =>
     o.lines.forEach((l) => {
       const cur = map.get(l.productId) || { name: l.name, profit: 0 };
       cur.profit += (l.price - l.cost) * l.qty - l.discount;
@@ -114,7 +119,7 @@ export function profitByProduct(orders: SalesOrder[], limit = 8) {
 
 export function profitBySalon(orders: SalesOrder[], limit = 8) {
   const map = new Map<string, { name: string; profit: number }>();
-  valid(orders).forEach((o) => {
+  rev(orders).forEach((o) => {
     const cur = map.get(o.salonId) || { name: o.salonName, profit: 0 };
     cur.profit += o.profit;
     map.set(o.salonId, cur);
@@ -125,7 +130,7 @@ export function profitBySalon(orders: SalesOrder[], limit = 8) {
 export function topCategories(orders: SalesOrder[], products: Product[], limit = 6) {
   const cat = new Map<string, string>(products.map((p) => [p.id, p.category]));
   const map = new Map<string, number>();
-  valid(orders).forEach((o) =>
+  rev(orders).forEach((o) =>
     o.lines.forEach((l) => {
       const c = cat.get(l.productId) ?? "Other";
       map.set(c, (map.get(c) || 0) + l.price * l.qty);
@@ -197,7 +202,7 @@ export function monthlyActiveSalons(orders: SalesOrder[], months = 6) {
 
 // Repeat revenue %: share of revenue from salons with 2+ valid orders.
 export function repeatRevenuePct(orders: SalesOrder[]) {
-  const v = valid(orders);
+  const v = rev(orders);
   const count = new Map<string, number>();
   v.forEach((o) => count.set(o.salonId, (count.get(o.salonId) || 0) + 1));
   const total = v.reduce((s, o) => s + o.total, 0);
@@ -210,7 +215,7 @@ export function repeatRevenuePct(orders: SalesOrder[]) {
 export function regionSales(orders: SalesOrder[], salons: Salon[]) {
   const region = new Map<string, string>(salons.map((s) => [s.id, s.region || "Unspecified"]));
   const map = new Map<string, number>();
-  valid(orders).forEach((o) => {
+  rev(orders).forEach((o) => {
     const r = region.get(o.salonId) ?? "Unspecified";
     map.set(r, (map.get(r) || 0) + o.total);
   });
@@ -271,7 +276,7 @@ export function buildSalonExportRows(
   const salonById = new Map<string, Salon>(salons.map((s) => [s.id, s]));
   const grouped = new Map<string, { salonId: string; salonName: string; revenue: number; profit: number }>();
 
-  valid(orders).forEach((o) => {
+  rev(orders).forEach((o) => {
     const key = o.salonId || o.salonName;
     const cur = grouped.get(key) || { salonId: o.salonId, salonName: o.salonName, revenue: 0, profit: 0 };
     cur.revenue += o.total;

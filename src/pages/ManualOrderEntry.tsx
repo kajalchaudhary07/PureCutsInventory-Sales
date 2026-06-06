@@ -5,7 +5,6 @@ import { Search, Plus, Minus, Trash2, ShoppingCart, Store, UserPlus } from "luci
 import { Button, Card, Input, Textarea, Select, PageHeader, Field } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
 import { useDataStore } from "@/store/dataStore";
-import { useUIStore } from "@/store/uiStore";
 import { createSalesOrder, saveDoc, logActivity } from "@/services/data";
 import { inr, num, uid } from "@/lib/utils";
 import { available, orderTotals } from "@/lib/calc";
@@ -14,7 +13,7 @@ import type { OrderLine, PaymentStatus, SalesChannel, Salon } from "@/types";
 export default function ManualOrderEntry() {
   const navigate = useNavigate();
   const { products, salons } = useDataStore();
-  const defaultGst = useUIStore((s) => s.settings.defaultGst);
+  // GST per-line comes from product `gstRate` (product master). No global default.
   const [salonId, setSalonId] = useState("");
   const [channel, setChannel] = useState<SalesChannel>("manual");
   const [payment, setPayment] = useState<PaymentStatus>("Unpaid");
@@ -33,7 +32,7 @@ export default function ManualOrderEntry() {
     setLines((prev) => {
       const exist = prev.find((l) => l.productId === id);
       if (exist) return prev.map((l) => l.productId === id ? { ...l, qty: l.qty + 1 } : l);
-      return [...prev, { productId: p.id, name: p.name, sku: p.sku, qty: 1, price: p.sellingPrice, cost: p.costPrice, gstRate: p.gstRate || defaultGst, discount: 0 }];
+      return [...prev, { productId: p.id, name: p.name, sku: p.sku, qty: 1, price: p.sellingPrice, cost: p.costPrice, originalPrice: p.originalPrice, gstRate: p.gstRate || 0, discount: 0 }];
     });
     setSearch("");
   };

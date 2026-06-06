@@ -41,6 +41,23 @@ export interface ItemGroup {
   createdAt: number;
 }
 
+export type SalonStatus =
+  | "Active"
+  | "Inactive"
+  | "Pending Approval"
+  | "Suspended"
+  | "Closed"
+  | "Archived";
+
+export const SALON_STATUSES: SalonStatus[] = [
+  "Active",
+  "Inactive",
+  "Pending Approval",
+  "Suspended",
+  "Closed",
+  "Archived",
+];
+
 export interface Salon {
   id: string;
   name: string;
@@ -51,6 +68,7 @@ export interface Salon {
   region?: string;
   branchNo?: string;
   description?: string;
+  status?: SalonStatus; // optional for backward compat; treated as "Active" when missing
   outstanding: number;
   totalPurchases: number;
   createdAt: number;
@@ -77,6 +95,7 @@ export interface OrderLine {
   qty: number;
   price: number; // unit selling price
   cost: number; // unit cost (for profit)
+  originalPrice?: number; // MRP / list price for customer savings
   gstRate: number; // %
   discount: number; // amount on the line
 }
@@ -104,7 +123,9 @@ export interface SalesOrder {
   total: number;
   profit: number;
   status: SalesStatus;
-  paymentStatus: PaymentStatus;
+  // Frontend payment tracking
+  paidAmount?: number;
+  paymentStatus?: PaymentStatus;
   createdAt: number;
   // Editable-invoice extras (all optional for backward compatibility).
   extraCharges?: ExtraCharge[]; // custom rows below GST (surge, packaging, round-off…)
@@ -120,6 +141,7 @@ export interface SalesOrder {
 }
 
 export type PurchaseStatus = "Draft" | "Sent" | "Partial" | "Received" | "Cancelled";
+export type PurchasePaymentStatus = "Unpaid" | "Partial" | "Paid";
 
 export interface PurchaseLine {
   productId: string;
@@ -138,6 +160,9 @@ export interface PurchaseOrder {
   lines: PurchaseLine[];
   total: number;
   status: PurchaseStatus;
+  // Frontend-only payment tracking (optional for backward compatibility).
+  paidAmount?: number;
+  paymentStatus?: PurchasePaymentStatus;
   expectedDate?: number;
   createdAt: number;
 }
@@ -175,7 +200,6 @@ export interface AppSettings {
   companyEmail: string;
   companyWebsite: string;
   companyGstin: string;
-  defaultGst: number;
   invoicePrefix: string;
   currencySymbol: string;
   enableBarcode: boolean;

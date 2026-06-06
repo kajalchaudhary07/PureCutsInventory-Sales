@@ -20,7 +20,6 @@ const defaultSettings: AppSettings = {
   companyEmail: "purecuts.in@gmail.com",
   companyWebsite: "http://www.purecuts.in",
   companyGstin: "",
-  defaultGst: 18,
   invoicePrefix: "PC",
   currencySymbol: "₹",
   enableBarcode: true,

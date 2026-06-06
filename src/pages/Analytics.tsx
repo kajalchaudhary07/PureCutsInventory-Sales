@@ -8,7 +8,7 @@ import { Button, Card, PageHeader, Badge } from "@/components/ui/primitives";
 import { useDataStore } from "@/store/dataStore";
 import { inr, num, exportCsv } from "@/lib/utils";
 import {
-  salesByDay, salesByMonth, stockVelocity, available, isLow, margin,
+  salesByDay, salesByMonth, stockVelocity, available, isLow, margin, countsForRevenue,
 } from "@/lib/calc";
 
 const palette = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#0ea5e9", "#8b5cf6", "#ec4899"];
@@ -31,7 +31,7 @@ export default function Analytics() {
 
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
-    salesOrders.filter((o) => o.status !== "Cancelled").forEach((o) =>
+    salesOrders.filter(countsForRevenue).forEach((o) =>
       o.lines.forEach((l) => {
         const p = products.find((x) => x.id === l.productId);
         const cat = p?.category ?? "Other";

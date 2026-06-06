@@ -140,6 +140,45 @@ export function StatCard({
   );
 }
 
+// ---- Clickable status-count card -----------------------------------------
+// Same visual language as StatCard, but acts as a toggle/filter button.
+export function StatusCountCard({
+  icon: Icon,
+  label,
+  value,
+  active = false,
+  onClick,
+  accent = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string | number;
+  active?: boolean;
+  onClick?: () => void;
+  accent?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-xl border bg-white p-4 text-left transition hover:border-slate-300 hover:shadow-sm dark:bg-slate-900",
+        active
+          ? "border-slate-900 ring-1 ring-slate-900 dark:border-white dark:ring-white"
+          : "border-slate-200 dark:border-slate-800"
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-slate-500">{label}</span>
+        <span className={cn("grid h-8 w-8 place-items-center rounded-lg", accent)}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900 tabular-nums dark:text-white">{value}</div>
+    </button>
+  );
+}
+
 // ---- Page header ---------------------------------------------------------
 export function PageHeader({
   title,

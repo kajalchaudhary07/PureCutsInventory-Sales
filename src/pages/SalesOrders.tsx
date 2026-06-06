@@ -1,15 +1,15 @@
 import { useMemo, useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { Plus, FileText, Printer, Pencil, Save, X, MessageCircle, Trash2, Search, PackagePlus, Bell, Copy, Truck } from "lucide-react";
+import { Plus, FileText, Printer, Pencil, Save, X, MessageCircle, Trash2, Search, PackagePlus, Bell, Copy, Truck, Clock, Package, PackageCheck, XCircle, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Button, Card, Input, Textarea, Select, PageHeader, StatCard, Badge, Field } from "@/components/ui/primitives";
+import { Button, Card, Input, Textarea, Select, PageHeader, StatCard, StatusCountCard, Badge, Field } from "@/components/ui/primitives";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { useDataStore } from "@/store/dataStore";
 import { useUIStore } from "@/store/uiStore";
-import { setOrderStatus, updateOrderPricing, saveDoc, logActivity } from "@/services/data";
+import { setOrderStatus, updateOrderPricing, saveDoc, logActivity, salesPaymentStatus } from "@/services/data";
 import { inr, num, fmtDateTime, uid } from "@/lib/utils";
-import { lineGst, lineNet, orderTotals } from "@/lib/calc";
+import { lineGst, lineNet, orderTotals, countsForRevenue } from "@/lib/calc";
 import { printInvoice, shareInvoiceWhatsapp } from "@/lib/invoice";
 import { paymentReminderDraft, orderUpdateDraft, shareTextWhatsapp } from "@/lib/messages";
 import type { ExtraCharge, OrderLine, Product, SalesOrder, SalesStatus } from "@/types";
@@ -19,7 +19,8 @@ const STATUSES: SalesStatus[] = ["Pending", "Packed", "Delivered", "Cancelled", 
 function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: () => void }) {
   const settings = useUIStore((s) => s.settings);
   const products = useDataStore((s) => s.products);
-  const salonPhone = useDataStore((s) => (order ? s.salons.find((x) => x.id === order.salonId)?.phone : undefined));
+  const salon = useDataStore((s) => (order ? s.salons.find((x) => x.id === order.salonId) : undefined));
+  const salonPhone = salon?.phone;
   const [editing, setEditing] = useState(false);
   const [lines, setLines] = useState<OrderLine[]>([]);
   const [charges, setCharges] = useState<ExtraCharge[]>([]);
@@ -55,7 +56,7 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
   const addProductLine = (p: Product) => {
     setLines((prev) => [
       ...prev,
-      { productId: p.id, name: p.name, sku: p.sku, qty: 1, price: p.sellingPrice, cost: p.costPrice, gstRate: p.gstRate, discount: 0 },
+      { productId: p.id, name: p.name, sku: p.sku, qty: 1, price: p.sellingPrice, cost: p.costPrice, originalPrice: p.originalPrice, gstRate: p.gstRate, discount: 0 },
     ]);
     setSearch("");
   };
@@ -97,7 +98,7 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
         editing ? (
           <>
             <Button variant="secondary" onClick={cancelEdit}><X className="h-4 w-4" /> Cancel</Button>
-            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(workingOrder, settings, salonPhone)}>
+            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(workingOrder, settings, salonPhone, salon)}>
               <MessageCircle className="h-4 w-4" /> WhatsApp
             </Button>
             <Button onClick={() => (dirty ? setAskSave(true) : setEditing(false))} disabled={!dirty}>
@@ -108,10 +109,10 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
           <>
             <Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" /> Edit invoice</Button>
             <Button variant="secondary" onClick={onClose}>Close</Button>
-            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(order, settings, salonPhone)}>
+            <Button variant="secondary" onClick={() => shareInvoiceWhatsapp(order, settings, salonPhone, salon)}>
               <MessageCircle className="h-4 w-4" /> WhatsApp
             </Button>
-            <Button onClick={() => printInvoice(order, settings)}><Printer className="h-4 w-4" /> Print / PDF</Button>
+            <Button onClick={() => printInvoice(order, settings, salon)}><Printer className="h-4 w-4" /> Print / PDF</Button>
           </>
         )
       }
@@ -242,7 +243,7 @@ function InvoiceModal({ order, onClose }: { order: SalesOrder | null; onClose: (
       </div>
 
       {/* Quick create-new-product */}
-      <QuickAddProduct open={quickAdd} onClose={() => setQuickAdd(false)} defaultGst={settings.defaultGst} onCreated={(p) => { addProductLine(p); setQuickAdd(false); }} />
+      <QuickAddProduct open={quickAdd} onClose={() => setQuickAdd(false)} onCreated={(p) => { addProductLine(p); setQuickAdd(false); }} />
 
       {/* "Ask each time" save-scope prompt */}
       <Modal
@@ -275,11 +276,11 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function QuickAddProduct({ open, onClose, defaultGst, onCreated }: { open: boolean; onClose: () => void; defaultGst: number; onCreated: (p: Product) => void }) {
-  const [f, setF] = useState({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: defaultGst });
+function QuickAddProduct({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (p: Product) => void }) {
+  const [f, setF] = useState({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: 18 });
   const set = (k: keyof typeof f, v: string | number) => setF({ ...f, [k]: v });
 
-  useEffect(() => { if (open) setF({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: defaultGst }); }, [open, defaultGst]);
+  useEffect(() => { if (open) setF({ name: "", sku: "", brand: "", category: "", costPrice: 0, sellingPrice: 0, gstRate: 18 }); }, [open]);
 
   const create = async () => {
     if (f.name.trim().length < 2) { toast.error("Enter a product name"); return; }
@@ -335,12 +336,17 @@ export default function SalesOrders() {
   const [notify, setNotify] = useState<SalesOrder | null>(null);
 
   const stats = useMemo(() => {
-    const valid = orders.filter((o) => o.status !== "Cancelled");
+    const valid = orders.filter(countsForRevenue);
+    const countByStatus = (s: SalesStatus) => orders.filter((o) => o.status === s).length;
     return {
       total: orders.length,
       revenue: valid.reduce((s, o) => s + o.total, 0),
       profit: valid.reduce((s, o) => s + o.profit, 0),
-      pending: orders.filter((o) => o.status === "Pending").length,
+      pending: countByStatus("Pending"),
+      packed: countByStatus("Packed"),
+      delivered: countByStatus("Delivered"),
+      returned: countByStatus("Returned"),
+      cancelled: countByStatus("Cancelled"),
     };
   }, [orders]);
 
@@ -353,6 +359,14 @@ export default function SalesOrders() {
     toast.success(`${o.orderNo} → ${status}`);
   };
 
+  const updatePaidAmount = async (o: SalesOrder, raw: string | number) => {
+    const v = Number(raw) || 0;
+    const paymentStatus = salesPaymentStatus(v, o.total);
+    await saveDoc("salesOrders", { ...o, paidAmount: v, paymentStatus });
+    logActivity("Recorded payment", "salesOrder", `${o.orderNo} → ${inr(v)} (${paymentStatus})`, o.orderNo);
+    toast.success("Payment saved");
+  };
+
   return (
     <div>
       <PageHeader title="Sales Orders" subtitle="Unified orders from app, phone & WhatsApp."
@@ -360,9 +374,18 @@ export default function SalesOrders() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={FileText} label="Total Orders" value={num(stats.total)} />
-        <StatCard icon={FileText} label="Revenue" value={inr(stats.revenue)} accent="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" />
-        <StatCard icon={FileText} label="Profit" value={inr(stats.profit)} accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
+        <StatCard icon={FileText} label="Revenue" value={inr(stats.revenue)} sub="delivered only" accent="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" />
+        <StatCard icon={FileText} label="Profit" value={inr(stats.profit)} sub="delivered only" accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
         <StatCard icon={FileText} label="Pending" value={num(stats.pending)} accent="bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" />
+      </div>
+
+      {/* Per-status count cards — click to filter the list below. */}
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <StatusCountCard icon={Clock} label="Pending" value={stats.pending} active={statusTab === "Pending"} onClick={() => setStatusTab(statusTab === "Pending" ? "all" : "Pending")} accent="bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" />
+        <StatusCountCard icon={Package} label="Packed" value={stats.packed} active={statusTab === "Packed"} onClick={() => setStatusTab(statusTab === "Packed" ? "all" : "Packed")} accent="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" />
+        <StatusCountCard icon={PackageCheck} label="Delivered" value={stats.delivered} active={statusTab === "Delivered"} onClick={() => setStatusTab(statusTab === "Delivered" ? "all" : "Delivered")} accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" />
+        <StatusCountCard icon={RotateCcw} label="Returned" value={stats.returned} active={statusTab === "Returned"} onClick={() => setStatusTab(statusTab === "Returned" ? "all" : "Returned")} accent="bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300" />
+        <StatusCountCard icon={XCircle} label="Cancelled" value={stats.cancelled} active={statusTab === "Cancelled"} onClick={() => setStatusTab(statusTab === "Cancelled" ? "all" : "Cancelled")} accent="bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300" />
       </div>
 
       <div className="mb-4 mt-6 flex flex-wrap items-center gap-2">
@@ -391,12 +414,23 @@ export default function SalesOrders() {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{o.salonName}</div>
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <StatusBadge value={o.channel} /> {o.lines.length} items · <Badge color={o.paymentStatus === "Paid" ? "emerald" : o.paymentStatus === "Partial" ? "amber" : "rose"}>{o.paymentStatus}</Badge>
+                  <StatusBadge value={o.channel} /> {o.lines.length} items · <Badge color={o.paymentStatus === "Paid" ? "emerald" : o.paymentStatus === "Partial" ? "amber" : "rose"}>{o.paymentStatus ?? "Unpaid"}</Badge>
                 </div>
               </div>
               <div className="text-right">
                 <div className="font-semibold tabular-nums text-slate-900 dark:text-white">{inr(o.total)}</div>
                 <div className="text-xs text-emerald-600">+{inr(o.profit)}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  <span className="mr-2">Paid:</span>
+                  <input
+                    defaultValue={o.paidAmount ?? 0}
+                    type="number"
+                    step="0.01"
+                    onBlur={(e) => updatePaidAmount(o, e.target.value)}
+                    className="inline-block w-28 rounded border border-slate-200 bg-white px-2 py-0.5 text-sm tabular-nums dark:border-slate-700 dark:bg-slate-800"
+                  />
+                  <div className="mt-1">Remaining: <span className="font-medium tabular-nums">{inr(Math.max(0, o.total - (o.paidAmount ?? 0)))}</span></div>
+                </div>
               </div>
               <Select value={o.status} onChange={(e) => changeStatus(o, e.target.value as SalesStatus)} className="w-auto">
                 {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}

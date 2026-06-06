@@ -5,13 +5,24 @@ import { z } from "zod";
 import toast from "react-hot-toast";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Plus, Store, Pencil, IndianRupee } from "lucide-react";
-import { Button, Field, Input, Textarea, PageHeader, StatCard, Badge } from "@/components/ui/primitives";
+import { Button, Field, Input, Textarea, Select, PageHeader, StatCard, Badge } from "@/components/ui/primitives";
 import { DataTable } from "@/components/ui/DataTable";
 import { Modal } from "@/components/ui/Modal";
 import { useDataStore } from "@/store/dataStore";
 import { saveDoc, logActivity } from "@/services/data";
 import { inr, num, uid } from "@/lib/utils";
-import type { Salon } from "@/types";
+import { countsForRevenue } from "@/lib/calc";
+import { SALON_STATUSES, type Salon, type SalonStatus } from "@/types";
+
+// Salon status → badge colour.
+const SALON_STATUS_COLOR: Record<SalonStatus, Parameters<typeof Badge>[0]["color"]> = {
+  Active: "emerald",
+  Inactive: "slate",
+  "Pending Approval": "amber",
+  Suspended: "rose",
+  Closed: "rose",
+  Archived: "violet",
+};
 
 const schema = z.object({
   name: z.string().min(2, "Required"),
@@ -21,6 +32,7 @@ const schema = z.object({
   address: z.string().optional(),
   region: z.string().optional(),
   branchNo: z.string().optional(),
+  status: z.enum(["Active", "Inactive", "Pending Approval", "Suspended", "Closed", "Archived"]),
   description: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
@@ -28,7 +40,7 @@ type FormValues = z.infer<typeof schema>;
 function SalonForm({ open, onClose, editing }: { open: boolean; onClose: () => void; editing: Salon | null }) {
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: editing ? { name: editing.name, ownerName: editing.ownerName, phone: editing.phone, gstin: editing.gstin, address: editing.address, region: editing.region, branchNo: editing.branchNo, description: editing.description } : { name: "", ownerName: "", phone: "", gstin: "", address: "", region: "", branchNo: "", description: "" },
+    values: editing ? { name: editing.name, ownerName: editing.ownerName, phone: editing.phone, gstin: editing.gstin, address: editing.address, region: editing.region, branchNo: editing.branchNo, status: editing.status ?? "Active", description: editing.description } : { name: "", ownerName: "", phone: "", gstin: "", address: "", region: "", branchNo: "", status: "Active", description: "" },
   });
   const onSubmit = async (v: FormValues) => {
     const salon: Salon = {
@@ -39,7 +51,7 @@ function SalonForm({ open, onClose, editing }: { open: boolean; onClose: () => v
       ...v,
     };
     await saveDoc("salons", salon);
-    logActivity(editing ? "Edited salon" : "Added salon", "salon", salon.name);
+    logActivity(editing ? "Edited salon" : "Added salon", "salon", `${salon.name} · ${salon.status}`);
     toast.success(editing ? "Salon updated" : "Salon added");
     onClose();
   };
@@ -53,6 +65,11 @@ function SalonForm({ open, onClose, editing }: { open: boolean; onClose: () => v
         <Field label="GSTIN"><Input {...register("gstin")} /></Field>
         <Field label="Region / City"><Input {...register("region")} placeholder="Mumbai, Thane, Pune…" /></Field>
         <Field label="Branch No"><Input {...register("branchNo")} placeholder="e.g. B-2 (optional)" /></Field>
+        <Field label="Status" error={errors.status?.message}>
+          <Select {...register("status")}>
+            {SALON_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </Field>
         <div className="sm:col-span-2"><Field label="Address"><Input {...register("address")} /></Field></div>
         <div className="sm:col-span-2"><Field label="Description / notes"><Textarea rows={3} {...register("description")} placeholder="Preferred brands, delivery notes, payment terms…" /></Field></div>
       </div>
@@ -64,11 +81,17 @@ export default function Salons() {
   const { salons, salesOrders } = useDataStore();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Salon | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | SalonStatus>("all");
 
   const enriched = useMemo(() => salons.map((s) => {
-    const orders = salesOrders.filter((o) => o.salonId === s.id && o.status !== "Cancelled");
-    return { salon: s, revenue: orders.reduce((a, o) => a + o.total, 0), profit: orders.reduce((a, o) => a + o.profit, 0), orders: orders.length };
+    const orders = salesOrders.filter((o) => o.salonId === s.id && countsForRevenue(o));
+    return { salon: s, status: (s.status ?? "Active") as SalonStatus, revenue: orders.reduce((a, o) => a + o.total, 0), profit: orders.reduce((a, o) => a + o.profit, 0), orders: orders.length };
   }), [salons, salesOrders]);
+
+  const visible = useMemo(
+    () => (statusFilter === "all" ? enriched : enriched.filter((e) => e.status === statusFilter)),
+    [enriched, statusFilter]
+  );
 
   const totals = {
     count: salons.length,
@@ -79,6 +102,7 @@ export default function Salons() {
   const columns: ColumnDef<(typeof enriched)[number], unknown>[] = [
     { header: "Salon", accessorFn: (e) => e.salon.name, cell: ({ row }) => (<div><div className="font-medium text-slate-900 dark:text-white">{row.original.salon.name}{row.original.salon.branchNo ? <span className="ml-1.5 text-xs text-slate-400">· Branch {row.original.salon.branchNo}</span> : null}</div><div className="text-xs text-slate-400">{row.original.salon.ownerName} · {row.original.salon.phone}</div></div>) },
     { header: "GSTIN", accessorFn: (e) => e.salon.gstin || "—", cell: ({ getValue }) => <span className="text-slate-500">{getValue() as string}</span> },
+    { header: "Status", accessorKey: "status", cell: ({ row }) => <Badge color={SALON_STATUS_COLOR[row.original.status]}>{row.original.status}</Badge> },
     { header: "Orders", accessorKey: "orders", cell: ({ getValue }) => <span className="tabular-nums">{num(getValue() as number)}</span> },
     { header: "Revenue", accessorKey: "revenue", cell: ({ getValue }) => <span className="font-semibold tabular-nums">{inr(getValue() as number)}</span> },
     { header: "Profit", accessorKey: "profit", cell: ({ getValue }) => <span className="font-semibold tabular-nums text-emerald-600">{inr(getValue() as number)}</span> },
@@ -98,7 +122,17 @@ export default function Salons() {
       </div>
 
       <div className="mt-6">
-        <DataTable data={enriched} columns={columns} searchPlaceholder="Search salons…" />
+        <DataTable
+          data={visible}
+          columns={columns}
+          searchPlaceholder="Search salons…"
+          toolbar={
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "all" | SalonStatus)} className="w-auto">
+              <option value="all">All statuses</option>
+              {SALON_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
+          }
+        />
       </div>
 
       <SalonForm open={open} onClose={() => setOpen(false)} editing={editing} />
